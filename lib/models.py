@@ -12,20 +12,21 @@ class Company(Base):
 
     freebies = relationship('Freebie', back_populates='company')
 
-    def give_freebie(self, session: Session, dev, item_name: str, value: int):
-        """Create a new Freebie given to a dev."""
+    def give_freebie_to_dev(self, session: Session, dev, item_name: str, value: int):
         new_freebie = Freebie(item_name=item_name, value=value, dev=dev, company=self)
         session.add(new_freebie)
         session.commit()
         return new_freebie
 
     def freebies_given(self, session: Session):
-        """Return total number of freebies this company has given."""
         return session.query(func.count(Freebie.id)).filter(Freebie.company_id == self.id).scalar()
 
     def total_value_given(self, session: Session):
-        """Return total value of all freebies given by this company."""
         return session.query(func.coalesce(func.sum(Freebie.value), 0)).filter(Freebie.company_id == self.id).scalar()
+
+    @classmethod
+    def oldest_company(cls, session: Session):
+        return session.query(cls).order_by(cls.founding_year.asc()).first()
 
 
 class Dev(Base):
@@ -37,16 +38,29 @@ class Dev(Base):
     freebies = relationship('Freebie', back_populates='dev')
 
     def freebies_received(self, session: Session):
-        """Return total number of freebies received by this dev."""
         return session.query(func.count(Freebie.id)).filter(Freebie.dev_id == self.id).scalar()
 
     def total_value_received(self, session: Session):
-        """Return total value of all freebies received by this dev."""
         return session.query(func.coalesce(func.sum(Freebie.value), 0)).filter(Freebie.dev_id == self.id).scalar()
 
-    def freebies_by_company(self, session: Session, company):
-        """Return list of freebies received from a specific company."""
+    def freebies_from_company(self, session: Session, company):
         return session.query(Freebie).filter(Freebie.dev_id == self.id, Freebie.company_id == company.id).all()
+
+    def received_one(self, session: Session, item_name: str):
+        return session.query(Freebie).filter(
+            Freebie.dev_id == self.id,
+            Freebie.item_name == item_name
+        ).first() is not None
+
+    def has_freebie(self, freebie):
+        return freebie.dev_id == self.id
+
+    def give_away(self, session: Session, freebie, other_dev):
+        if self.has_freebie(freebie):
+            freebie.dev = other_dev
+            session.commit()
+            return freebie
+        return None
 
 
 class Freebie(Base):
@@ -61,3 +75,6 @@ class Freebie(Base):
 
     dev = relationship('Dev', back_populates='freebies')
     company = relationship('Company', back_populates='freebies')
+
+    def print_details(self):
+        return f"{self.dev.name} owns a {self.item_name} from {self.company.name}"
